@@ -1,0 +1,108 @@
+# NanoDet-M 416, ZCU102/DPU-friendly export config.
+# Based on nanodet/config/legacy_v0.x_configs/nanodet-m-416.yml.
+# Key deployment changes:
+# - activation is ReLU instead of LeakyReLU to reduce CPU-subgraph risk on DPU.
+# - keep NanoDetHead/reg_max=7, so raw channels = nc + 4 * (reg_max + 1).
+
+save_dir: workspace/nanodet_m_416_relu_zcu
+model:
+  arch:
+    name: OneStageDetector
+    backbone:
+      name: ShuffleNetV2
+      model_size: 1.0x
+      out_stages: [2, 3, 4]
+      activation: ReLU
+    fpn:
+      name: PAN
+      in_channels: [116, 232, 464]
+      out_channels: 96
+      start_level: 0
+      num_outs: 3
+    head:
+      name: NanoDetHead
+      num_classes: 1
+      input_channel: 96
+      feat_channels: 96
+      stacked_convs: 2
+      share_cls_reg: True
+      octave_base_scale: 5
+      scales_per_octave: 1
+      strides: [8, 16, 32]
+      reg_max: 7
+      norm_cfg:
+        type: BN
+      loss:
+        loss_qfl:
+          name: QualityFocalLoss
+          use_sigmoid: True
+          beta: 2.0
+          loss_weight: 1.0
+        loss_dfl:
+          name: DistributionFocalLoss
+          loss_weight: 0.25
+        loss_bbox:
+          name: GIoULoss
+          loss_weight: 2.0
+data:
+  train:
+    name: YoloDataset
+    img_path: /kaggle/working/pdt_nanodet_merge/train
+    ann_path: /kaggle/working/pdt_nanodet_merge/train
+    input_size: [416, 416]
+    keep_ratio: True
+    class_names: [Tree]
+    pipeline:
+      perspective: 0.0
+      scale: [0.5, 1.4]
+      stretch: [[1, 1], [1, 1]]
+      rotation: 0
+      shear: 0
+      translate: 0.2
+      flip: 0.5
+      brightness: 0.2
+      contrast: [0.6, 1.4]
+      saturation: [0.5, 1.2]
+      normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
+  val:
+    name: YoloDataset
+    img_path: /kaggle/working/pdt_nanodet_merge/val
+    ann_path: /kaggle/working/pdt_nanodet_merge/val
+    input_size: [416, 416]
+    keep_ratio: True
+    class_names: [Tree]
+    pipeline:
+      normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
+  test:
+    name: YoloDataset
+    img_path: /kaggle/working/pdt_nanodet_merge/test
+    ann_path: /kaggle/working/pdt_nanodet_merge/test
+    input_size: [416, 416]
+    keep_ratio: True
+    class_names: [Tree]
+device:
+  gpu_ids: [0]
+  workers_per_gpu: 2
+  batchsize_per_gpu: 64
+schedule:
+  optimizer:
+    name: SGD
+    lr: 0.04
+    momentum: 0.9
+    weight_decay: 0.0001
+  warmup:
+    name: linear
+    steps: 300
+    ratio: 0.1
+  total_epochs: 100
+  lr_schedule:
+    name: MultiStepLR
+    milestones: [80, 90, 97]
+    gamma: 0.1
+  val_intervals: 5
+evaluator:
+  name: CocoDetectionEvaluator
+  save_key: mAP
+log:
+  interval: 10
+class_names: [Tree]
